@@ -16,6 +16,8 @@
 // ============================================================================
 
 const http = require('http');
+const fs = require('fs');
+const path = require('path');
 const createFakeRedisClient = require('./fakeRedisClient');
 
 const PORT = 3000;
@@ -104,6 +106,17 @@ function responderJSON(res, statusCode, body) {
 }
 
 const server = http.createServer(async (req, res) => {
+  // ⬇️ Agregado: sirve public/index.html — una página que usa la misma
+  // Idempotency-Key que ya vimos por curl, pero generada por el navegador
+  // (crypto.randomUUID()) y mandada con fetch(). No toca la lógica de
+  // idempotencia de abajo, solo le da una interfaz visual.
+  if (req.method === 'GET' && (req.url === '/' || req.url === '/index.html')) {
+    const html = fs.readFileSync(path.join(__dirname, 'public', 'index.html'));
+    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+    res.end(html);
+    return;
+  }
+
   if (req.method === 'POST' && req.url === '/pedidos') {
     let body;
     try {

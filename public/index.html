@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<title>Idempotencia desde el front</title>
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 640px; margin: 2rem auto; padding: 0 1rem; line-height: 1.5; }
+  h1 { font-size: 1.4rem; }
+  label { display: block; margin-top: 0.75rem; font-weight: 600; }
+  input { width: 100%; padding: 0.4rem; margin-top: 0.25rem; box-sizing: border-box; }
+  button { margin-top: 1rem; padding: 0.5rem 1rem; margin-right: 0.5rem; cursor: pointer; }
+  button:disabled { opacity: 0.5; cursor: not-allowed; }
+  pre { background: #f4f4f4; padding: 0.6rem; border-radius: 6px; overflow-x: auto; margin: 0.3rem 0 0; }
+  .log-entry { border-bottom: 1px solid #ddd; padding: 0.6rem 0; font-size: 0.9rem; }
+  .clave { font-family: monospace; background: #eef; padding: 0.2rem 0.4rem; border-radius: 4px; }
+</style>
+</head>
+<body>
+  <h1>Idempotencia vista desde el front</h1>
+  <p>
+    Esta página habla con el mismo servidor de <code>server.js</code> (el que usa
+    <code>fakeRedisClient.js</code>). La clave <code>Idempotency-Key</code> la genera
+    el <strong>navegador</strong>, con <code>crypto.randomUUID()</code> — el servidor
+    nunca la inventa, solo la usa para decidir si ya vio esta operación antes.
+  </p>
+
+  <label for="curso">Curso del pedido</label>
+  <input id="curso" value="Express.js" />
+
+  <p>
+    <strong>Idempotency-Key del intento actual:</strong>
+    <span class="clave" id="claveActual">(todavía no generada)</span>
+  </p>
+
+  <button id="btnNuevo">① Crear pedido (nuevo intento)</button>
+  <button id="btnReintentar" disabled>② Reintentar (misma key — simula un timeout de red)</button>
+  <button id="btnListar">Ver todos los pedidos</button>
+
+  <h2>Log</h2>
+  <div id="log"></div>
+
+  <script>
+    // La clave se genera UNA sola vez por "intento lógico" (cuando el usuario
+    // aprieta el botón ①), y se REUTILIZA en cada reintento de ESE mismo
+    // intento (botón ②) — así es como lo haría un cliente real que no está
+    // seguro de si su POST anterior llegó a procesarse. Recién cuando el
+    // usuario arranca un intento nuevo (① otra vez) se genera una clave nueva.
+    let idempotencyKey = null;
+
+    const claveActualEl = document.getElementById('claveActual');
+    const logEl = document.getElementById('log');
+    const btnNuevo = document.getElementById('btnNuevo');
+    const btnReintentar = document.getElementById('btnReintentar');
+    const btnListar = document.getElementById('btnListar');
+
+    function log(etiqueta, status, body) {
+      const entry = document.createElement('div');
+      entry.className = 'log-entry';
+      entry.innerHTML = `<strong>${etiqueta}</strong> — HTTP ${status}<pre>${JSON.stringify(body, null, 2)}</pre>`;
+      logEl.prepend(entry);
+    }
+
+    async function crearPedido(key, etiqueta) {
+      const curso = document.getElementById('curso').value;
+      const res = await fetch('/pedidos', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Idempotency-Key': key,
+        },
+        body: JSON.stringify({ curso }),
+      });
+      const body = await res.json();
+      log(etiqueta, res.status, body);
+    }
+
+    btnNuevo.addEventListener('click', async () => {
+      idempotencyKey = crypto.randomUUID();
+      claveActualEl.textContent = idempotencyKey;
+      btnReintentar.disabled = false;
+      await crearPedido(idempotencyKey, 'Intento nuevo (key recién generada)');
+    });
+
+    btnReintentar.addEventListener('click', async () => {
+      if (!idempotencyKey) return;
+      await crearPedido(idempotencyKey, 'Reintento (misma key que el de arriba)');
+    });
+
+    btnListar.addEventListener('click', async () => {
+      const res = await fetch('/pedidos');
+      const body = await res.json();
+      log('GET /pedidos — estado actual', res.status, body);
+    });
+  </script>
+</body>
+</html>

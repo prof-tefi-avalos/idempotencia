@@ -111,6 +111,36 @@ curl -X POST http://localhost:3000/pedidos \
   reintentos de red, múltiples pestañas, o un cliente que ni siquiera pasa
   por una interfaz (como un agente de IA).
 
+## 3. Probarlo desde el navegador (front real, sin curl)
+
+Con el server corriendo (`node server.js`), abrí:
+
+```
+http://localhost:3000/
+```
+
+Es `public/index.html`, agregado a esta demo — el server ahora también sirve
+esa página en `GET /` (ver el bloque agregado al principio de `server.js`,
+antes del `if` de `POST /pedidos`; el resto del archivo no se tocó).
+
+Qué hace la página:
+
+- Genera la `Idempotency-Key` en el **navegador**, con `crypto.randomUUID()`
+  — el servidor nunca la inventa, solo la recibe.
+- **① Crear pedido**: genera una key nueva y hace el POST (equivalente al Paso A por curl).
+- **② Reintentar**: reusa la MISMA key del botón ① y vuelve a mandar el POST
+  — es el fetch que haría un cliente real (o un agente de IA) que no está
+  seguro si su request anterior llegó a procesarse. Probalo varias veces:
+  siempre te va a devolver la misma respuesta, sin crear un pedido nuevo.
+- **Ver todos los pedidos**: hace `GET /pedidos` para que se vea el estado
+  real de la "base de datos" y se confirme que los reintentos no sumaron nada.
+
+Esto es lo mismo que el Paso B por curl, pero mostrando el detalle que a
+veces queda implícito: la key no la genera el servidor ni un middleware
+mágico — la genera quien hace el request, y por eso tiene que persistir
+entre el intento original y sus reintentos (por eso vive en una variable de
+JS, no se regenera en cada click).
+
 ## Si más adelante querés mostrar Redis de verdad
 
 En Mac, sin Docker, la forma más simple es con Homebrew:
